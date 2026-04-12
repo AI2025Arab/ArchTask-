@@ -1,0 +1,63 @@
+# ArchTask - Docker Compose for development and production
+# BUG-07 Fixed: Uses 'build: .' to build from local source code instead of using generic vikunja images.
+# This ensures ArchTask-specific code (AI routes, arch_phase fields, etc.) is included.
+
+version: '3.8'
+
+services:
+  api:
+    # BUG-07 Fixed: Build from local Dockerfile instead of using vikunja/api image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - VIKUNJA_DATABASE_HOST=db
+      - VIKUNJA_DATABASE_PASSWORD=vikunja
+      - VIKUNJA_DATABASE_TYPE=mysql
+      - VIKUNJA_DATABASE_USER=vikunja
+      - VIKUNJA_DATABASE_DATABASE=vikunja
+      - VIKUNJA_SERVICE_FRONTENDURL=http://localhost:80
+      # ArchTask AI Keys — fill before deploy, do NOT commit values
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    ports:
+      - "3456:3456"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - api-data:/app/files
+
+  frontend:
+    # BUG-07 Fixed: Build from local frontend source instead of using vikunja/frontend image
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - VIKUNJA_API_URL=http://localhost:3456/api/v1
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  db:
+    image: mariadb:10
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=vikunja
+      - MYSQL_PASSWORD=vikunja
+      - MYSQL_DATABASE=vikunja
+    volumes:
+      - db:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db:
+  api-data:
